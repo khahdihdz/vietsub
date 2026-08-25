@@ -1,0 +1,40 @@
+@import url('https://fonts.googleapis.com/css2?family=Be+Vietnam+Pro:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap');
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+html,
+body {
+  background-color: #0a0f0e;
+  color: #eaf2ee;
+}
+
+* {
+  scrollbar-width: thin;
+  scrollbar-color: #22332d #11201c;
+}
+*::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+*::-webkit-scrollbar-track {
+  background: #11201c;
+}
+*::-webkit-scrollbar-thumb {
+  background: #22332d;
+  border-radius: 4px;
+}
+
+:focus-visible {
+  outline: 2px solid #22d3b8;
+  outline-offset: 2px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  * {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+}

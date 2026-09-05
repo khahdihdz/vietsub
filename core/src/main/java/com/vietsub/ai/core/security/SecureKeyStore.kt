@@ -27,7 +27,7 @@ class SecureKeyStore(context: Context) {
     fun getApiKey(): String? = prefs.getString(KEY_API_KEY, null)
 
     fun setApiKey(value: String) {
-        prefs.edit().putString(KEY_API_KEY, value).apply()
+        prefs.edit().putString(KEY_API_KEY, value).commit()
     }
 
     fun clearApiKey() {

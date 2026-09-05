@@ -52,9 +52,9 @@ class WhisperApiSpeechToTextEngine(
     }
 
     override suspend fun transcribe(audioFile: File, language: String?): List<TranscriptSegment> {
-        val result = RetryPolicy.withRetry(maxRetries) {
+        val apiKey = apiKeyProvider()?.trim().orEmpty()\n        require(apiKey.isNotEmpty()) { "Chưa lưu API key — vào Settings và bấm Save API settings trước." }\n\n        val result = RetryPolicy.withRetry(maxRetries) {
             val filePart = MultipartBody.Part.createFormData(
-                "file", audioFile.name, audioFile.asRequestBody("audio/wav".toMediaTypeOrNull())
+                "file", audioFile.name, audioFile.asRequestBody("audio/mpeg".toMediaTypeOrNull())
             )
             val modelPart = model.toRequestBody("text/plain".toMediaTypeOrNull())
             val languagePart = language?.toRequestBody("text/plain".toMediaTypeOrNull())

@@ -13,17 +13,10 @@ import java.io.File
 import java.util.UUID
 
 /**
- * Tuong duong lenh CLI trong spec S6:
- *   ffmpeg -i input.mp4 -ar 16000 -ac 1 -c:a pcm_s16le audio.wav
+ * Extract audio to a compact MP3 suitable for the Whisper multipart upload.
  *
- * sourceVideoPath da duoc resolve san o tang data/app (vi du tham so "saf:..."
- * cho content:// Uri qua FFmpegKitConfig.getSafParameterForRead, xem
- * data/video/SafPathResolver.kt) — module nay khong dong voi Storage Access
- * Framework truc tiep, chi nhan mot path/tham so FFmpeg co the -i thang vao.
- *
- * Khong bao gio overwrite video goc, khong load file vao RAM — FFmpegKit thao
- * tac truc tiep tren duong dan. File WAV nam trong outputDir (app cache),
- * caller chiu trach nhiem cleanup theo cau hinh "Auto Cleanup" o Settings (spec S25).
+ * The input is resolved by SafPathResolver, so content:// URIs can be passed to
+ * FFmpegKit without copying the whole source video into RAM or storage first.
  */
 class FFmpegAudioExtractor : AudioExtractor {
 
@@ -38,16 +31,16 @@ class FFmpegAudioExtractor : AudioExtractor {
             return@callbackFlow
         }
 
-        // pcm_s16le is raw PCM and must be muxed into a WAV container.
-        // The previous implementation used .mp3 while requesting pcm_s16le,
-        // which makes FFmpeg fail immediately with an unsupported codec/container
-        // combination. That is why the UI stopped at "Extract Audio 0%".
-        val outputFile = File(outputDir, "audio_${UUID.randomUUID()}.wav")
+        // Keep the output as a real MP3 because WhisperApiSpeechToTextEngine
+        // uploads it with MIME type audio/mpeg. The previous code only changed
+        // the extension to .mp3 while still encoding pcm_s16le, which makes
+        // FFmpeg fail at the first pipeline stage ("Extract Audio 0%").
+        val outputFile = File(outputDir, "audio_${UUID.randomUUID()}.mp3")
 
         val session = FFmpegKit.executeAsync(
             buildCommand(sourceVideoPath, outputFile),
             { session ->
-                if (ReturnCode.isSuccess(session.returnCode) && outputFile.isFile && outputFile.length() > 44L) {
+                if (ReturnCode.isSuccess(session.returnCode) && outputFile.isFile && outputFile.length() > 0L) {
                     trySend(
                         ExtractionProgress.Done(
                             AudioExtractionResult(audioFile = outputFile, sourceDurationMs = sourceDurationMs)
@@ -74,15 +67,17 @@ class FFmpegAudioExtractor : AudioExtractor {
     }
 
     private fun buildCommand(inputPathOrSaf: String, output: File): String {
-        // Escape duong dan co khoang trang/Unicode (spec S22 ap dung tu buoc nay).
+        // Escape paths containing spaces/Unicode and SAF parameters.
         val outputPath = output.absolutePath.replace("\"", "\\\"")
         val input = if (inputPathOrSaf.contains(" ") || inputPathOrSaf.startsWith("saf:")) {
             "\"${inputPathOrSaf.replace("\"", "\\\"")}\""
         } else {
             inputPathOrSaf
         }
-        // -f wav + pcm_s16le makes the container/codec pairing explicit.
-        // -y only overwrites the temporary WAV, never the source video.
-        return "-y -i $input -vn -ar 16000 -ac 1 -c:a pcm_s16le -f wav \"$outputPath\""
+
+        // 16 kHz mono is sufficient for speech recognition and dramatically
+        // reduces upload size compared with raw PCM/WAV. libmp3lame produces a
+        // valid MP3 container, matching the audio/mpeg MIME used by the STT API.
+        return "-y -i $input -vn -ar 16000 -ac 1 -c:a libmp3lame -b:a 128k -f mp3 \"$outputPath\""
     }
 }

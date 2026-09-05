@@ -28,12 +28,9 @@ dependencies {
     implementation(project(":core"))
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.8.1")
 
-    // FFmpeg Android binding. ffmpeg-kit (arthenica) da ngung phat trien/archive
-    // tu 2023 — cac artifact da publish van resolve duoc tu Maven Central nhung
-    // khong con duoc cap nhat. Hai huong xu ly:
-    //   1. Giu coordinate nay (chay duoc ngay hom nay, tu pin version + tu audit CVE), hoac
-    //   2. Doi sang fork do cong dong duy tri hoac tu build .aar rieng — chi can sua
-    //      FFmpegAudioExtractor.kt, phan con lai cua app khong can biet.
-    // Xem README, muc "FFmpeg dependency".
-    implementation("com.arthenica:ffmpeg-kit-full:6.0-2")
+    // Maintained FFmpegKit fork. The original com.arthenica binaries were
+    // removed from Maven Central after FFmpegKit was retired. The maintained
+    // fork preserves the com.arthenica.ffmpegkit Java/Kotlin API, so existing
+    // FFmpegAudioExtractor code does not need import changes.
+    implementation("dev.ffmpegkit-maintained:ffmpeg-kit-full:8.1.7")
 }

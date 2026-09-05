@@ -111,7 +111,11 @@ class PipelineWorker(
         reportProgress(PipelineStage.SPEECH_RECOGNITION, 0, projectId)
         log(projectId, "Starting STT backend AUTO / whisper-1")
         val sttConfig = SttConfig(backend = SttBackend.AUTO, apiBaseUrl = ApiProviderConfig.DEFAULT_BASE_URL, apiModel = "whisper-1")
-        val engine = SpeechToTextEngineFactory.create(applicationContext, sttConfig) { secureKeyStore.getApiKey() }
+        val engine = SpeechToTextEngineFactory.create(
+            context = applicationContext,
+            config = sttConfig,
+            apiKeyProvider = { secureKeyStore.getApiKey() }
+        )
         val transcript = TranscribeAudioUseCase(engine)(audioFile, sttConfig.sourceLanguage)
         if (transcript.isEmpty()) throw IllegalStateException("Không nhận diện được audio")
         chunkStateStore.saveTranscript(projectId, transcript)

@@ -22,7 +22,7 @@ import java.util.UUID
  * Framework truc tiep, chi nhan mot path/tham so FFmpeg co the -i thang vao.
  *
  * Khong bao gio overwrite video goc, khong load file vao RAM — FFmpegKit thao
- * tac truc tiep tren duong dan. File audio.wav nam trong outputDir (app cache),
+ * tac truc tiep tren duong dan. File audio.mp3 nam trong outputDir (app cache),
  * caller chiu trach nhiem cleanup theo cau hinh "Auto Cleanup" o Settings (spec S25).
  */
 class FFmpegAudioExtractor : AudioExtractor {
@@ -33,7 +33,7 @@ class FFmpegAudioExtractor : AudioExtractor {
         outputDir: File
     ): Flow<ExtractionProgress> = callbackFlow {
         if (!outputDir.exists()) outputDir.mkdirs()
-        val outputFile = File(outputDir, "audio_${UUID.randomUUID()}.wav")
+        val outputFile = File(outputDir, "audio_${UUID.randomUUID()}.mp3")
 
         val session = FFmpegKit.executeAsync(
             buildCommand(sourceVideoPath, outputFile),

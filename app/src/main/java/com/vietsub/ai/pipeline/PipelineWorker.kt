@@ -67,10 +67,7 @@ class PipelineWorker(
             log(projectId, "Translation complete: ${subtitles.size} subtitles")
 
             log(projectId, "[4/4] Validate + write SRT/ASS...")
-            val result = writeSubtitleFiles(transcript, subtitles, projectId)
-            if (result is Result.Success) log(projectId, "PIPELINE SUCCESS")
-            else log(projectId, "PIPELINE FAILED")
-            result
+            writeSubtitleFiles(transcript, subtitles, projectId)
         } catch (e: Exception) {
             log(projectId, "ERROR: ${e.stackTraceToString()}")
             Result.failure(errorData(e.message ?: "Pipeline thất bại"))
@@ -147,6 +144,7 @@ class PipelineWorker(
         return when (val result = validator.validate(transcript.map { it.id }.toSet(), subtitles)) {
             is ValidationResult.Failed -> {
                 log(projectId, "Subtitle validation FAILED: ${result.issues.joinToString("; ") { it.message }}")
+                log(projectId, "PIPELINE FAILED")
                 Result.failure(errorData("Subtitle validation thất bại: " + result.issues.joinToString("; ") { it.message }))
             }
             is ValidationResult.Success -> {
@@ -157,6 +155,7 @@ class PipelineWorker(
                 log(projectId, "SRT: ${srt.absolutePath}")
                 log(projectId, "ASS: ${ass.absolutePath}")
                 reportProgress(PipelineStage.SUBTITLE, 100, projectId)
+                log(projectId, "PIPELINE SUCCESS")
                 Result.success(workDataOf(KEY_SRT_PATH to srt.absolutePath, KEY_ASS_PATH to ass.absolutePath, KEY_FAILED_SEGMENT_COUNT to (transcript.size - subtitles.size)))
             }
         }

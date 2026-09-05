@@ -22,7 +22,7 @@ import java.util.UUID
  * Framework truc tiep, chi nhan mot path/tham so FFmpeg co the -i thang vao.
  *
  * Khong bao gio overwrite video goc, khong load file vao RAM — FFmpegKit thao
- * tac truc tiep tren duong dan. File audio.mp3 nam trong outputDir (app cache),
+ * tac truc tiep tren duong dan. File WAV nam trong outputDir (app cache),
  * caller chiu trach nhiem cleanup theo cau hinh "Auto Cleanup" o Settings (spec S25).
  */
 class FFmpegAudioExtractor : AudioExtractor {
@@ -32,20 +32,32 @@ class FFmpegAudioExtractor : AudioExtractor {
         sourceDurationMs: Long,
         outputDir: File
     ): Flow<ExtractionProgress> = callbackFlow {
-        if (!outputDir.exists()) outputDir.mkdirs()
-        val outputFile = File(outputDir, "audio_${UUID.randomUUID()}.mp3")
+        if (!outputDir.exists() && !outputDir.mkdirs() && !outputDir.exists()) {
+            trySend(ExtractionProgress.Failed("Khong tao duoc thu muc tam: ${outputDir.absolutePath}"))
+            close()
+            return@callbackFlow
+        }
+
+        // pcm_s16le is raw PCM and must be muxed into a WAV container.
+        // The previous implementation used .mp3 while requesting pcm_s16le,
+        // which makes FFmpeg fail immediately with an unsupported codec/container
+        // combination. That is why the UI stopped at "Extract Audio 0%".
+        val outputFile = File(outputDir, "audio_${UUID.randomUUID()}.wav")
 
         val session = FFmpegKit.executeAsync(
             buildCommand(sourceVideoPath, outputFile),
             { session ->
-                if (ReturnCode.isSuccess(session.returnCode)) {
+                if (ReturnCode.isSuccess(session.returnCode) && outputFile.isFile && outputFile.length() > 44L) {
                     trySend(
                         ExtractionProgress.Done(
                             AudioExtractionResult(audioFile = outputFile, sourceDurationMs = sourceDurationMs)
                         )
                     )
                 } else {
-                    trySend(ExtractionProgress.Failed(session.failStackTrace ?: "FFmpeg export that bai"))
+                    val detail = session.failStackTrace
+                        ?: session.output
+                        ?: "FFmpeg export that bai (returnCode=${session.returnCode})"
+                    trySend(ExtractionProgress.Failed(detail))
                 }
                 close()
             },
@@ -69,7 +81,8 @@ class FFmpegAudioExtractor : AudioExtractor {
         } else {
             inputPathOrSaf
         }
-        // -y o day chi overwrite file audio tam (outputPath), khong dung toi input.
-        return "-y -i $input -ar 16000 -ac 1 -c:a pcm_s16le \"$outputPath\""
+        // -f wav + pcm_s16le makes the container/codec pairing explicit.
+        // -y only overwrites the temporary WAV, never the source video.
+        return "-y -i $input -vn -ar 16000 -ac 1 -c:a pcm_s16le -f wav \"$outputPath\""
     }
 }

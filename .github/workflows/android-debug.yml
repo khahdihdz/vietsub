@@ -27,6 +27,7 @@ jobs:
       - name: Set up Android SDK
         uses: android-actions/setup-android@v3
 
+      # Android project modules and sources are validated at checkout.
       # The repository has gradle-wrapper.properties but is missing the
       # gradlew script and gradle-wrapper.jar. Install the pinned Gradle
       # version directly so CI can build without a checked-in wrapper.

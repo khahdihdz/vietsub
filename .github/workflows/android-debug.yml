@@ -1,0 +1,60 @@
+name: Android Debug Build
+
+on:
+  push:
+    branches: [main, develop]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+
+      - name: Set up Android SDK
+        uses: android-actions/setup-android@v3
+
+      - name: Gradle cache
+        uses: gradle/actions/setup-gradle@v3
+
+      - name: Unit tests
+        run: ./gradlew test --stacktrace
+
+      - name: Lint
+        run: ./gradlew lint --stacktrace
+
+      - name: Assemble debug APK
+        run: ./gradlew assembleDebug --stacktrace
+
+      - name: Verify APK exists and is non-empty
+        run: |
+          APK=$(find app/build/outputs/apk/debug -name "*.apk" | head -n 1)
+          if [ -z "$APK" ] || [ ! -s "$APK" ]; then
+            echo "Debug APK missing or empty" >&2
+            exit 1
+          fi
+
+      - name: Upload debug APK
+        if: success()
+        uses: actions/upload-artifact@v4
+        with:
+          name: VietSubAI-debug.apk
+          path: app/build/outputs/apk/debug/*.apk
+
+      - name: Upload diagnostics on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: build-diagnostics
+          path: |
+            **/build/reports/**
+            **/build/test-results/**

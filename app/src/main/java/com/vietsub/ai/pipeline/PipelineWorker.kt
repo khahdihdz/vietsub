@@ -4,6 +4,7 @@ import android.app.Notification
 import android.content.pm.ServiceInfo
 import android.net.Uri
 import android.os.Build
+import android.provider.OpenableColumns
 import androidx.core.app.NotificationCompat
 import androidx.work.CoroutineWorker
 import androidx.work.ForegroundInfo
@@ -22,13 +23,13 @@ import com.vietsub.ai.domain.model.TranscriptSegment
 import com.vietsub.ai.domain.usecase.ExtractAudioUseCase
 import com.vietsub.ai.domain.usecase.TranscribeAudioUseCase
 import com.vietsub.ai.ffmpeg.FFmpegAudioExtractor
-import com.vietsub.ai.ffmpeg.SafPathResolver
 import com.vietsub.ai.stt.SpeechToTextEngineFactory
 import com.vietsub.ai.subtitle.SubtitleEngineImpl
 import com.vietsub.ai.subtitle.SubtitleValidator
 import com.vietsub.ai.subtitle.ValidationResult
 import com.vietsub.ai.translation.DeepSeekTranslationEngine
 import java.io.File
+import java.io.IOException
 
 class PipelineWorker(
     appContext: android.content.Context,
@@ -50,12 +51,11 @@ class PipelineWorker(
         setForegroundSafe(0, "Đang xử lý...")
 
         val chunkStateStore = FileChunkStateStore(applicationContext)
-        val safPathResolver = SafPathResolver(applicationContext)
         val secureKeyStore = SecureKeyStore(applicationContext)
 
         return try {
             log(projectId, "[1/4] Kiểm tra audio cache...")
-            val audioFile = ensureAudioExtracted(uri, durationMs, projectId, chunkStateStore, safPathResolver)
+            val audioFile = ensureAudioExtracted(uri, durationMs, projectId, chunkStateStore)
             log(projectId, "Audio ready: ${audioFile.absolutePath}")
 
             log(projectId, "[2/4] Speech-to-text...")
@@ -70,33 +70,124 @@ class PipelineWorker(
             writeSubtitleFiles(transcript, subtitles, projectId)
         } catch (e: Exception) {
             log(projectId, "ERROR: ${e.stackTraceToString()}")
+            log(projectId, "PIPELINE FAILED")
             Result.failure(errorData(e.message ?: "Pipeline thất bại"))
         }
     }
 
-    private suspend fun ensureAudioExtracted(uri: Uri, durationMs: Long, projectId: String, chunkStateStore: FileChunkStateStore, safPathResolver: SafPathResolver): File {
-        val cached = chunkStateStore.getAudioFilePath(projectId)?.let(::File)?.takeIf { it.exists() }
+    private suspend fun ensureAudioExtracted(
+        uri: Uri,
+        durationMs: Long,
+        projectId: String,
+        chunkStateStore: FileChunkStateStore
+    ): File {
+        val cached = chunkStateStore.getAudioFilePath(projectId)?.let(::File)?.takeIf { it.exists() && it.length() > 0L }
         if (cached != null) {
             log(projectId, "Audio cache hit — skip extraction")
             reportProgress(PipelineStage.EXTRACT_AUDIO, 100, projectId)
             return cached
         }
+
         log(projectId, "Extracting audio...")
         reportProgress(PipelineStage.EXTRACT_AUDIO, 0, projectId)
+
+        // Do not pass Android content:// or saf: directly to FFmpeg. Different
+        // FFmpegKit forks handle SAF parameters differently, while a local file
+        // path is supported consistently by all builds. Copy through a stream
+        // so a large video is never loaded into RAM.
+        val localInput = materializeVideoForFfmpeg(uri, projectId)
+        log(projectId, "FFmpeg local input: ${localInput.absolutePath}")
+        log(projectId, "FFmpeg input size: ${localInput.length()} bytes")
+
         val cacheDir = File(applicationContext.cacheDir, "vietsub_audio")
-        val safPath = safPathResolver.resolveForFfmpegRead(uri)
         var extractedFile: File? = null
-        ExtractAudioUseCase(FFmpegAudioExtractor())(safPath, durationMs, cacheDir).collect { progress ->
+        ExtractAudioUseCase(
+            FFmpegAudioExtractor { message -> log(projectId, "FFmpeg: $message") }
+        )(localInput.absolutePath, durationMs, cacheDir).collect { progress ->
             when (progress) {
                 is ExtractionProgress.Running -> reportProgress(PipelineStage.EXTRACT_AUDIO, progress.percent, projectId)
                 is ExtractionProgress.Done -> extractedFile = progress.result.audioFile
-                is ExtractionProgress.Failed -> throw IllegalStateException(progress.message)
+                is ExtractionProgress.Failed -> {
+                    log(projectId, "Audio extraction FAILED: ${progress.message.takeLast(6000)}")
+                    throw IllegalStateException("Tách audio thất bại: ${progress.message.takeLast(1500)}")
+                }
             }
         }
+
         val file = extractedFile ?: throw IllegalStateException("Extract audio không trả về kết quả")
         chunkStateStore.saveAudioFilePath(projectId, file.absolutePath)
         reportProgress(PipelineStage.EXTRACT_AUDIO, 100, projectId)
         return file
+    }
+
+    /**
+     * Converts a picker URI into a stable local cache file for FFmpeg.
+     * The copy is streamed and therefore does not scale RAM usage with video size.
+     */
+    private fun materializeVideoForFfmpeg(uri: Uri, projectId: String): File {
+        if (uri.scheme.equals("file", ignoreCase = true)) {
+            val path = uri.path ?: throw IOException("File URI không có đường dẫn")
+            val file = File(path)
+            if (!file.isFile || file.length() <= 0L) throw IOException("Không đọc được file video: $path")
+            return file
+        }
+
+        val dir = File(applicationContext.cacheDir, "vietsub_input/$projectId").apply {
+            if (!exists() && !mkdirs() && !exists()) throw IOException("Không tạo được thư mục cache input")
+        }
+        val name = queryDisplayName(uri)
+            ?.replace(Regex("[^A-Za-z0-9._-]"), "_")
+            ?.take(120)
+            ?.takeIf { it.isNotBlank() }
+            ?: "input_video.mp4"
+        val output = File(dir, name)
+
+        if (output.isFile && output.length() > 0L) {
+            log(projectId, "Input cache hit — skip URI copy")
+            return output
+        }
+
+        log(projectId, "Resolving content URI through ContentResolver...")
+        val resolver = applicationContext.contentResolver
+        resolver.openInputStream(uri)?.use { input ->
+            output.outputStream().use { out ->
+                val buffer = ByteArray(DEFAULT_COPY_BUFFER_SIZE)
+                var total = 0L
+                while (true) {
+                    val read = input.read(buffer)
+                    if (read < 0) break
+                    if (read == 0) continue
+                    out.write(buffer, 0, read)
+                    total += read
+                    if (total % (16L * 1024L * 1024L) < read) {
+                        log(projectId, "Copied input: $total bytes")
+                    }
+                }
+                out.flush()
+            }
+        } ?: throw IOException("ContentResolver không mở được video URI")
+
+        if (!output.isFile || output.length() <= 0L) {
+            throw IOException("Copy video thất bại hoặc file rỗng")
+        }
+        log(projectId, "URI copy completed: ${output.length()} bytes")
+        return output
+    }
+
+    private fun queryDisplayName(uri: Uri): String? {
+        if (uri.scheme.equals("content", ignoreCase = true)) {
+            applicationContext.contentResolver.query(
+                uri,
+                arrayOf(OpenableColumns.DISPLAY_NAME),
+                null,
+                null,
+                null
+            )?.use { cursor ->
+                val index = cursor.getColumnIndex(OpenableColumns.DISPLAY_NAME)
+                if (index >= 0 && cursor.moveToFirst()) return cursor.getString(index)
+            }
+        }
+        return null
     }
 
     private suspend fun ensureTranscribed(audioFile: File, projectId: String, chunkStateStore: FileChunkStateStore, secureKeyStore: SecureKeyStore): List<TranscriptSegment> {
@@ -191,6 +282,7 @@ class PipelineWorker(
     private fun errorData(message: String) = workDataOf(KEY_ERROR to message)
 
     companion object {
+        private const val DEFAULT_COPY_BUFFER_SIZE = 1024 * 1024
         const val KEY_VIDEO_URI = "video_uri"
         const val KEY_PROJECT_ID = "project_id"
         const val KEY_DURATION_MS = "duration_ms"

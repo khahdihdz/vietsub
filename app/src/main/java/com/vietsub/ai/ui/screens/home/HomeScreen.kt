@@ -11,17 +11,15 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalClipboardManager
+import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import androidx.compose.material3.windowsizeclass.ExperimentalMaterial3WindowSizeClassApi
-import androidx.compose.material3.windowsizeclass.WindowWidthSizeClass
-import androidx.compose.material3.windowsizeclass.calculateWindowSizeClass
 import com.vietsub.ai.domain.model.PipelineStage
 import com.vietsub.ai.domain.model.StageProgress
 import com.vietsub.ai.domain.model.StageState
+import com.vietsub.ai.domain.model.VideoMetadata
 
-@OptIn(ExperimentalMaterial3WindowSizeClassApi::class)
 @Composable
 fun HomeScreen(
     onOpenSettings: () -> Unit,
@@ -30,10 +28,10 @@ fun HomeScreen(
 ) {
     val state by viewModel.uiState.collectAsState()
     val clipboard = LocalClipboardManager.current
+    val configuration = LocalConfiguration.current
+    val wide = configuration.screenWidthDp >= 600
     val pickVideoLauncher = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri: Uri? -> uri?.let(viewModel::onVideoSelected) }
     val exportLauncher = rememberLauncherForActivityResult(ActivityResultContracts.CreateDocument("video/mp4")) { uri: Uri? -> uri?.let(viewModel::exportVideo) }
-    val widthClass = calculateWindowSizeClass(androidx.compose.ui.platform.LocalContext.current as android.app.Activity).widthSizeClass
-    val wide = widthClass != WindowWidthSizeClass.Compact
 
     Column(
         modifier = Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(horizontal = if (wide) 32.dp else 16.dp, vertical = 16.dp),
@@ -50,11 +48,11 @@ fun HomeScreen(
             if (wide) {
                 Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(16.dp)) {
                     VideoInfoCard(state, meta, Modifier.weight(1f))
-                    PipelineCard(state, Modifier.weight(1f))
+                    PipelineCard(state, viewModel::startPipeline, Modifier.weight(1f))
                 }
             } else {
                 VideoInfoCard(state, meta, Modifier.fillMaxWidth())
-                PipelineCard(state, Modifier.fillMaxWidth())
+                PipelineCard(state, viewModel::startPipeline, Modifier.fillMaxWidth())
             }
 
             if (state.terminalLog.isNotBlank()) {
@@ -94,11 +92,11 @@ private fun VideoInfoCard(state: HomeUiState, meta: VideoMetadata, modifier: Mod
 }
 
 @Composable
-private fun PipelineCard(state: HomeUiState, modifier: Modifier = Modifier) {
+private fun PipelineCard(state: HomeUiState, onStart: () -> Unit, modifier: Modifier = Modifier) {
     Card(modifier) {
         Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
             Text("Pipeline", style = MaterialTheme.typography.titleMedium)
-            Button(onClick = { state.metadata?.let { /* actual action remains in original button below */ } }, enabled = false, modifier = Modifier.fillMaxWidth().height(1.dp)) { }
+            Button(onClick = onStart, enabled = state.metadata?.hasAudioTrack == true, modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp)) { Text("BẮT ĐẦU") }
             state.stages.forEach { StageRow(it) }
         }
     }

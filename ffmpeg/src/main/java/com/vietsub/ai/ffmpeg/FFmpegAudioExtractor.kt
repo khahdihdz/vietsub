@@ -31,10 +31,6 @@ class FFmpegAudioExtractor : AudioExtractor {
             return@callbackFlow
         }
 
-        // Keep the output as a real MP3 because WhisperApiSpeechToTextEngine
-        // uploads it with MIME type audio/mpeg. The previous code only changed
-        // the extension to .mp3 while still encoding pcm_s16le, which makes
-        // FFmpeg fail at the first pipeline stage ("Extract Audio 0%").
         val outputFile = File(outputDir, "audio_${UUID.randomUUID()}.mp3")
 
         val session = FFmpegKit.executeAsync(
@@ -54,7 +50,7 @@ class FFmpegAudioExtractor : AudioExtractor {
                 }
                 close()
             },
-            { /* logs — khong log API key hay du lieu nhay cam, chi FFmpeg stderr */ },
+            { /* Logs are intentionally not persisted here; PipelineLogStore handles user-facing logs. */ },
             { stats: Statistics ->
                 if (sourceDurationMs > 0) {
                     val percent = ((stats.time.toFloat() / sourceDurationMs) * 100).toInt().coerceIn(0, 99)
@@ -67,17 +63,14 @@ class FFmpegAudioExtractor : AudioExtractor {
     }
 
     private fun buildCommand(inputPathOrSaf: String, output: File): String {
-        // Escape paths containing spaces/Unicode and SAF parameters.
         val outputPath = output.absolutePath.replace("\"", "\\\"")
-        val input = if (inputPathOrSaf.contains(" ") || inputPathOrSaf.startsWith("saf:")) {
-            "\"${inputPathOrSaf.replace("\"", "\\\"")}\""
-        } else {
-            inputPathOrSaf
-        }
+        val escapedInput = inputPathOrSaf.replace("\"", "\\\"")
+        val input = "\"$escapedInput\""
 
-        // 16 kHz mono is sufficient for speech recognition and dramatically
-        // reduces upload size compared with raw PCM/WAV. libmp3lame produces a
-        // valid MP3 container, matching the audio/mpeg MIME used by the STT API.
-        return "-y -i $input -vn -ar 16000 -ac 1 -c:a libmp3lame -b:a 128k -f mp3 \"$outputPath\""
+        // FFmpegKit 8.1.x removed support for the -ac N CLI option.
+        // Use the audio filter to force mono instead. Keeping 16 kHz mono
+        // produces a small speech-optimized MP3 for the Whisper API.
+        // Do not use: -ac 1
+        return "-y -i $input -vn -ar 16000 -af \"aformat=channel_layouts=mono\" -c:a libmp3lame -b:a 128k -f mp3 \"$outputPath\""
     }
 }

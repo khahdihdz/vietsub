@@ -1,8 +1,8 @@
 {
   "manifest_version": 3,
   "name": "AI Vietsub & Dubbing",
-  "version": "1.2.0",
-  "description": "AI Vietnamese subtitles, automatic speech-to-text and browser TTS dubbing powered by OpenRouter.",
+  "version": "1.2.1",
+  "description": "AI Vietnamese subtitles, live contextual translation, automatic speech-to-text and optional browser TTS dubbing powered by OpenRouter.",
   "permissions": ["storage", "activeTab", "scripting", "tabCapture", "offscreen"],
   "host_permissions": ["<all_urls>", "https://openrouter.ai/*"],
   "background": {"service_worker": "background.js"},

@@ -1,18 +1,19 @@
-# AI Vietsub & Dubbing Extension
+# AI Vietsub & Dubbing
+Manifest V3 extension for Chrome/Brave.
 
-Chrome/Brave Manifest V3 extension for AI-assisted Vietnamese subtitles. OpenRouter is used for contextual translation.
+## Features
+- Import SRT/VTT.
+- Context-aware batch translation through OpenRouter.
+- Shadow DOM subtitle overlay synchronized to HTML5 video time.
+- Vietnamese browser TTS dubbing.
+- Local API/model/prompt settings.
+- Automatic GitHub Actions packaging.
 
 ## Install
-1. Open `chrome://extensions` or `brave://extensions/`.
-2. Enable Developer mode.
-3. Load unpacked.
-4. Select the `extension/` folder.
-5. Open Options and configure an OpenRouter API key and model.
+Open chrome://extensions or brave://extensions, enable Developer mode, Load unpacked, choose extension/.
 
-## Automated builds
-GitHub Actions packages the extension on every push to `main` that changes `extension/**`, and publishes a rolling GitHub Release named `extension-latest`.
+## Update
+Each commit touching extension/ triggers GitHub Actions and publishes the latest ZIP. Load-unpacked installations still require Reload; silent browser updates require Web Store/enterprise distribution.
 
-## Automatic updates
-A manually installed **Load unpacked** Chrome/Brave extension cannot silently replace its own files. True automatic browser updates require Chrome Web Store/Brave distribution or enterprise/policy deployment. This repository automates every build/release so the latest package is always available.
-
-Never commit an OpenRouter API key.
+## Security
+Never commit an API key. It is stored locally in the extension.

@@ -1,16 +1,10 @@
-const $=id=>document.getElementById(id);
-(async()=>{
- const s=await chrome.storage.local.get(["apiKey","model","enabled"]);
- $("enabled").checked=!!s.enabled;
- $("status").textContent=s.apiKey?("Model: "+(s.model||"chọn model trong Cài đặt")):"Chưa cấu hình OpenRouter";
- $("enabled").addEventListener("change",async e=>{
-   await chrome.storage.local.set({enabled:e.target.checked});
-   const [tab]=await chrome.tabs.query({active:true,currentWindow:true});
-   if(tab?.id) chrome.tabs.sendMessage(tab.id,{type:"SET_ENABLED",enabled:e.target.checked}).catch(()=>{});
- });
- $("start").onclick=async()=>{
-   const [tab]=await chrome.tabs.query({active:true,currentWindow:true});
-   if(tab?.id) chrome.tabs.sendMessage(tab.id,{type:"SET_ENABLED",enabled:true}).catch(()=>{});
- };
- $("settings").onclick=()=>chrome.runtime.sendMessage({type:"OPEN_OPTIONS"});
-})();
+import{parseSrt,parseVtt,toSrt,download}from "./subtitle.js";
+const $=x=>document.getElementById(x);let cues=[],enabled=true,dubbing=false;
+function msg(x,ok=false){$("status").textContent=x;$("status").className=ok?"status ok":"status"}
+async function send(m){const[t]=await chrome.tabs.query({active:true,currentWindow:true});if(!t?.id)throw Error("Không tìm thấy tab");return chrome.tabs.sendMessage(t.id,m)}
+$("file").onchange=async e=>{const f=e.target.files[0];if(!f)return;const x=await f.text();cues=f.name.toLowerCase().endsWith(".vtt")?parseVtt(x):parseSrt(x);msg("Đã nạp "+cues.length+" câu phụ đề",true);await send({type:"SET_CUES",cues})};
+$("translate").onclick=async()=>{if(!cues.length){msg("Hãy nạp SRT/VTT trước.");return}msg("Đang dịch bằng OpenRouter...");const r=await send({type:"TRANSLATE",cues:cues.map(({id,text})=>({id,text}))}).catch(()=>null);if(!r?.ok){msg(r?.error||"Không thể gọi OpenRouter.");return}const map=new Map(r.result.map(x=>[String(x.id),x.translation]));cues=cues.map(c=>({...c,translated:map.get(String(c.id))||c.text}));await send({type:"SET_CUES",cues});download(toSrt(cues),"vietsub-vi.srt","text/srt");msg("Dịch xong và đã tải SRT.",true)};
+$("sub").onclick=async()=>{enabled=!enabled;$("sub").textContent="Phụ đề: "+(enabled?"BẬT":"TẮT");await send({type:"SET_ENABLED",enabled})};
+$("dub").onclick=async()=>{dubbing=!dubbing;$("dub").textContent="Thuyết minh: "+(dubbing?"BẬT":"TẮT");await send({type:"SET_DUBBING",enabled:dubbing,style:{rate:1,volume:1}})};
+$("settings").onclick=()=>chrome.runtime.openOptionsPage();
+(async()=>{const s=await chrome.storage.local.get(["apiKey","model"]);msg(s.apiKey?"Sẵn sàng • "+(s.model||"model mặc định"):"Chưa cấu hình OpenRouter");})();

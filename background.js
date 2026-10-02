@@ -1,5 +1,6 @@
 let captureTabId = null;
 let captureRunning = false;
+let captureVideoStart = 0;
 const autoCues = new Map();
 
 chrome.runtime.onMessage.addListener((m, s, send) => {
@@ -100,16 +101,17 @@ async function startAutoSubtitle(tabId) {
     const streamId = await chrome.tabCapture.getMediaStreamId({ targetTabId: tabId });
     await ensureOffscreen();
 
+    const start = await chrome.tabs.sendMessage(tabId, { type: "GET_VIDEO_TIME" }).catch(() => ({ time: 0 }));
     captureTabId = tabId;
+    captureVideoStart = Number(start?.time || 0);
     captureRunning = true;
     autoCues.set(tabId, []);
 
-    const start = await chrome.tabs.sendMessage(tabId, { type: "GET_VIDEO_TIME" }).catch(() => ({ time: 0 }));
     await chrome.runtime.sendMessage({
       type: "OFFSCREEN_START_CAPTURE",
       streamId,
       tabId,
-      startTime: Number(start?.time || 0)
+      startTime: captureVideoStart
     });
 
     return { ok: true };
@@ -123,6 +125,7 @@ async function startAutoSubtitle(tabId) {
 async function stopAutoSubtitle() {
   captureRunning = false;
   captureTabId = null;
+  captureVideoStart = 0;
   try {
     await chrome.runtime.sendMessage({ type: "OFFSCREEN_STOP_CAPTURE" });
   } catch {}
@@ -130,11 +133,33 @@ async function stopAutoSubtitle() {
   return { ok: true };
 }
 
+async function getCurrentVideoTime(tabId) {
+  try {
+    const r = await chrome.tabs.sendMessage(tabId, { type: "GET_VIDEO_TIME" });
+    return Number(r?.time || 0);
+  } catch {
+    return null;
+  }
+}
+
 async function handleAudioChunk(m) {
   if (!captureRunning || m.tabId !== captureTabId) return { ok: false, error: "Capture đã dừng." };
   try {
     const c = await getSettings();
     if (!c.apiKey) throw new Error("Thiếu OpenRouter API key.");
+
+    const duration = Math.max(1, Number(m.duration || 10));
+    const nominalStart = Number(m.startTime ?? 0);
+    const nominalEnd = nominalStart + duration;
+    const currentTime = await getCurrentVideoTime(m.tabId);
+
+    // Keep subtitles synchronized after seeking/pause. During normal playback the
+    // offscreen clock is used; after a significant jump, re-anchor this chunk.
+    let base = nominalStart;
+    if (currentTime != null && Math.abs(currentTime - nominalEnd) > 2.5) {
+      base = Math.max(0, currentTime - duration);
+    }
+
     const body = {
       model: c.sttModel || "openai/whisper-large-v3-turbo",
       input_audio: { data: m.data, format: m.format || "webm" },
@@ -158,23 +183,25 @@ async function handleAudioChunk(m) {
     const d = await r.json();
     const segments = Array.isArray(d.segments) && d.segments.length
       ? d.segments
-      : (d.text ? [{ start: 0, end: Number(m.duration || 8), text: d.text }] : []);
-    const base = Number(m.startTime || 0);
-    let raw = segments.map((x, i) => ({
+      : (d.text ? [{ start: 0, end: duration, text: d.text }] : []);
+
+    const raw = segments.map((x, i) => ({
       id: "auto-" + m.chunkId + "-" + i,
       start: base + Number(x.start || 0),
-      end: base + Number(x.end || Math.max(Number(x.start || 0) + 1, Number(m.duration || 8))),
+      end: base + Number(x.end || Math.max(Number(x.start || 0) + 1, duration)),
       text: String(x.text || "").trim()
     })).filter(x => x.text);
 
     if (!raw.length) return { ok: true, count: 0 };
 
-    const translated = c.autoTranslate === false ? raw : (await translateCues(raw));
+    const translated = c.autoTranslate === false ? { ok: true, result: raw.map(x => ({ id: x.id, translation: x.text })) } : (await translateCues(raw));
     if (!translated.ok) throw new Error(translated.error);
+
     const map = new Map((translated.result || []).map(x => [String(x.id), x.translation]));
     const result = raw.map(x => ({ ...x, translated: map.get(String(x.id)) || x.text }));
     const list = autoCues.get(m.tabId) || [];
-    list.push(...result);
+    const seen = new Set(list.map(x => x.id));
+    for (const cue of result) if (!seen.has(cue.id)) list.push(cue);
     list.sort((a, b) => a.start - b.start);
     autoCues.set(m.tabId, list);
 

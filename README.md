@@ -23,7 +23,7 @@ Tiện ích mở rộng **Chrome/Brave Manifest V3** giúp dịch phụ đề ti
 
 Tính năng mới sử dụng **Chrome `tabCapture` + Offscreen Document** để lấy âm thanh của tab hiện tại, sau đó gửi các đoạn audio ngắn tới endpoint Speech-to-Text của OpenRouter.
 
-OpenRouter hỗ trợ endpoint `/api/v1/audio/transcriptions`, các model Whisper và `verbose_json` với timestamp theo segment; extension tự ghép timestamp thành cue phụ đề. cite không đặt trong README
+OpenRouter hỗ trợ endpoint `/api/v1/audio/transcriptions`, các model Whisper và `verbose_json` với timestamp theo segment; extension tự ghép timestamp thành cue phụ đề.
 
 ### Cách dùng
 

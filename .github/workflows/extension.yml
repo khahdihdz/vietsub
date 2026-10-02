@@ -38,10 +38,16 @@ jobs:
 
       - name: Build CRX3 extension
         run: |
+          set -euo pipefail
           npm install --no-save crx3@2.0.0
+          rm -rf dist
           mkdir -p dist
-          npx crx3 -o dist/ai-vietsub-extension.crx .
+          test -f manifest.json
+          echo "Building from: $(pwd)"
+          echo "Manifest: $(realpath manifest.json)"
+          npx crx3 -o "$(pwd)/dist/ai-vietsub-extension.crx" -- .
           test -s dist/ai-vietsub-extension.crx
+          file dist/ai-vietsub-extension.crx
           ls -lh dist/ai-vietsub-extension.crx
 
       - name: Upload CRX artifact

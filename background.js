@@ -34,6 +34,13 @@ chrome.runtime.onMessage.addListener((m, s, send) => {
     handleAudioChunk(m).then(r => send(r));
     return true;
   }
+
+  if (m?.type === "OFFSCREEN_CAPTURE_ERROR") {
+    captureRunning = false;
+    captureTabId = null;
+    console.error("[AI Vietsub] Capture error:", m.error);
+    return false;
+  }
 });
 
 async function getSettings() {

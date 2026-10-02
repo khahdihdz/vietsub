@@ -1,9 +1,20 @@
 import{parseSrt,parseVtt,toSrt,download}from "./subtitle.js";
 const $=x=>document.getElementById(x);
 let cues=[],enabled=true,dubbing=false,autoRunning=false;
+
 function msg(x,ok=false){$("status").textContent=x;$("status").className=ok?"status ok":"status"}
-async function activeTab(){const[t]=await chrome.tabs.query({active:true,currentWindow:true});if(!t?.id)throw Error("Không tìm thấy tab");return t}
-async function tabMessage(m){const t=await activeTab();return chrome.tabs.sendMessage(t.id,m)}
+
+async function activeTab(){
+  const[t]=await chrome.tabs.query({active:true,currentWindow:true});
+  if(!t?.id)throw Error("Không tìm thấy tab");
+  return t;
+}
+
+async function tabMessage(m){
+  const t=await activeTab();
+  return chrome.tabs.sendMessage(t.id,m);
+}
+
 $("file").onchange=async e=>{
   const f=e.target.files[0];if(!f)return;
   const x=await f.text();
@@ -11,24 +22,33 @@ $("file").onchange=async e=>{
   msg("Đã nạp "+cues.length+" câu phụ đề",true);
   await tabMessage({type:"SET_CUES",cues});
 };
+
 $("auto").onclick=async()=>{
   try{
     const t=await activeTab();
     if(autoRunning){
       await chrome.runtime.sendMessage({type:"STOP_AUTO_SUBTITLE"});
-      autoRunning=false;$("auto").textContent="✨ Tạo phụ đề tự động";msg("Đã dừng tạo phụ đề.",true);
+      autoRunning=false;
+      $("auto").textContent="✨ Tạo phụ đề tự động";
+      msg("Đã dừng tạo phụ đề.",true);
     }else{
       msg("Đang khởi động bắt âm thanh của tab...");
       const r=await chrome.runtime.sendMessage({type:"START_AUTO_SUBTITLE",tabId:t.id});
       if(!r?.ok)throw Error(r?.error||"Không thể bắt âm thanh tab.");
-      autoRunning=true;$("auto").textContent="⏹ Dừng tạo phụ đề";msg("Đang nhận dạng lời thoại...",true);
+      autoRunning=true;
+      $("auto").textContent="⏹ Dừng tạo phụ đề";
+      msg("Đang nhận dạng → dịch trực tiếp...",true);
     }
   }catch(e){msg(e.message||"Không thể tạo phụ đề tự động.")}
 };
+
 $("translate").onclick=async()=>{
   if(!cues.length){msg("Hãy nạp SRT/VTT trước.");return}
   msg("Đang dịch bằng OpenRouter...");
-  const r=await chrome.runtime.sendMessage({type:"TRANSLATE",cues:cues.map(({id,text})=>({id,text}))}).catch(e=>({ok:false,error:e.message}));
+  const r=await chrome.runtime.sendMessage({
+    type:"TRANSLATE",
+    cues:cues.map(({id,text})=>({id,text}))
+  }).catch(e=>({ok:false,error:e.message}));
   if(!r?.ok){msg(r?.error||"Không thể gọi OpenRouter.");return}
   const map=new Map((r.result||[]).map(x=>[String(x.id),x.translation]));
   cues=cues.map(c=>({...c,translated:map.get(String(c.id))||c.text}));
@@ -36,13 +56,21 @@ $("translate").onclick=async()=>{
   download(toSrt(cues),"vietsub-vi.srt","text/srt");
   msg("Dịch xong và đã tải SRT.",true);
 };
+
 $("sub").onclick=async()=>{
-  enabled=!enabled;$("sub").textContent="Phụ đề: "+(enabled?"BẬT":"TẮT");await tabMessage({type:"SET_ENABLED",enabled});
+  enabled=!enabled;
+  $("sub").textContent="Phụ đề: "+(enabled?"BẬT":"TẮT");
+  await tabMessage({type:"SET_ENABLED",enabled});
 };
+
 $("dub").onclick=async()=>{
-  dubbing=!dubbing;$("dub").textContent="Thuyết minh: "+(dubbing?"BẬT":"TẮT");await tabMessage({type:"SET_DUBBING",enabled:dubbing,style:{rate:1,volume:1}});
+  dubbing=!dubbing;
+  $("dub").textContent="Thuyết minh: "+(dubbing?"BẬT":"TẮT");
+  await tabMessage({type:"SET_DUBBING",enabled:dubbing,style:{rate:1,volume:1}});
 };
+
 $("settings").onclick=()=>chrome.runtime.openOptionsPage();
+
 (async()=>{
   const s=await chrome.storage.local.get(["apiKey","model"]);
   msg(s.apiKey?"Sẵn sàng • "+(s.model||"model mặc định"):"Chưa cấu hình OpenRouter");

@@ -45,7 +45,7 @@ jobs:
           test -f manifest.json
           echo "Building from: $(pwd)"
           echo "Manifest: $(realpath manifest.json)"
-          npx crx3 -o "$(pwd)/dist/ai-vietsub-extension.crx" -- .
+          npx crx3 "$(pwd)" -o "$(pwd)/dist/ai-vietsub-extension.crx"
           test -s dist/ai-vietsub-extension.crx
           file dist/ai-vietsub-extension.crx
           ls -lh dist/ai-vietsub-extension.crx

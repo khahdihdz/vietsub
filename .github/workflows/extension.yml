@@ -1,4 +1,5 @@
 name: Build AI Vietsub Extension
+
 on:
   push:
     branches: [main]
@@ -10,25 +11,51 @@ on:
       - "README.md"
       - ".github/workflows/extension.yml"
   workflow_dispatch:
-permissions: {contents: write}
+
+permissions:
+  contents: write
+
 jobs:
   build:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - name: Validate
-        run: python3 -c "import json; m=json.load(open('manifest.json')); assert m['manifest_version']==3; print(m['name'],m['version'])"
-      - name: Package
-        run: mkdir -p dist && zip -r dist/ai-vietsub-extension.zip . -x ".git/*" ".github/*" "dist/*"
-      - uses: actions/upload-artifact@v4
-        with: {name: ai-vietsub-extension, path: dist/ai-vietsub-extension.zip}
-      - name: Release
+
+      - name: Validate manifest
+        run: |
+          python3 - <<'PY'
+          import json
+          m=json.load(open("manifest.json"))
+          assert m["manifest_version"] == 3
+          print(f'{m["name"]} v{m["version"]}')
+          PY
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Build CRX3 extension
+        run: |
+          npm install --no-save crx3@2.0.0
+          mkdir -p dist
+          npx crx3 -o dist/ai-vietsub-extension.crx .
+          test -s dist/ai-vietsub-extension.crx
+          ls -lh dist/ai-vietsub-extension.crx
+
+      - name: Upload CRX artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ai-vietsub-extension-crx
+          path: dist/ai-vietsub-extension.crx
+
+      - name: Publish release
         uses: softprops/action-gh-release@v2
         with:
           tag_name: extension-latest
           name: AI Vietsub Extension (latest)
           prerelease: true
           make_latest: false
-          files: dist/ai-vietsub-extension.zip
+          files: dist/ai-vietsub-extension.crx
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

@@ -53,10 +53,21 @@
   setInterval(() => { attach(); render(); }, 250);
 
   chrome.runtime.onMessage.addListener((m, s, send) => {
+    if (m.type === "GET_VIDEO_TIME") {
+      send({ ok: true, time: video?.currentTime || 0 });
+      return true;
+    }
     if (m.type === "SET_CUES") {
       cues = m.cues || [];
       enabled = true;
       last = -1;
+      render();
+      send({ ok: true });
+    }
+    if (m.type === "APPEND_CUES") {
+      const seen = new Set(cues.map(x => x.id));
+      for (const c of (m.cues || [])) if (!seen.has(c.id)) cues.push(c);
+      cues.sort((a, b) => a.start - b.start);
       render();
       send({ ok: true });
     }

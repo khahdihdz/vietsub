@@ -1,0 +1,17 @@
+<!doctype html>
+<meta charset="utf-8">
+<style>
+body{width:330px;margin:0;padding:16px;background:#111;color:#eee;font:14px Arial}
+h2{margin-top:0}
+button,input{box-sizing:border-box;width:100%;padding:10px;margin:6px 0;border-radius:7px;border:1px solid #444;background:#1d1d1d;color:#fff}
+button{cursor:pointer;background:#eee;color:#111;border:0}
+.row{display:flex;gap:8px}.row button{flex:1}
+.status{font-size:12px;color:#aaa;margin:8px 0}.ok{color:#7ee787}
+</style>
+<h2>AI Vietsub</h2>
+<div id="status" class="status"></div>
+<input id="file" type="file" accept=".srt,.vtt">
+<button id="translate">Dịch phụ đề sang tiếng Việt</button>
+<div class="row"><button id="sub">Phụ đề: BẬT</button><button id="dub">Thuyết minh: TẮT</button></div>
+<button id="settings">⚙ Cài đặt OpenRouter</button>
+<script type="module" src="popup.js"></script>

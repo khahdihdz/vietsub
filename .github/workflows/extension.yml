@@ -10,6 +10,7 @@ on:
       - "*.css"
       - "README.md"
       - ".github/workflows/extension.yml"
+      - "docs/**"
   workflow_dispatch:
 
 permissions:
@@ -49,7 +50,7 @@ jobs:
           name: ai-vietsub-extension-crx
           path: dist/ai-vietsub-extension.crx
 
-      - name: Publish release
+      - name: Publish latest CRX release
         uses: softprops/action-gh-release@v2
         with:
           tag_name: extension-latest
